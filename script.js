@@ -265,6 +265,7 @@ function renderPlacement() {
       }
       cell.addEventListener("click", () => clickPlacementCell(r, c));
       cell.addEventListener("mouseenter", () => showPreview(r, c));
+      cell.addEventListener("pointerdown", (e) => startDrag(e, r, c));
       placeBoardEl.appendChild(cell);
     }
   }
@@ -288,17 +289,112 @@ function renderPlacement() {
 
   rotateBtn.textContent = `↻ Rotate (now ${horizontal ? "across" : "down"})`;
   doneBtn.disabled = !allPlaced(me);
-  doneBtn.textContent = allPlaced(me) ? "Done placing" : `Place ${me.fleet.filter((s) => !s.cells).length} more`;
+  doneBtn.textContent = allPlaced(me) ? "Lock in fleet 🔒" : `Place ${me.fleet.filter((s) => !s.cells).length} more`;
 
   if (!placeMessageEl.textContent) {
     placeMessageEl.textContent = selected === null
-      ? "All ships placed. Click a ship to move it, or press Done."
+      ? "All ships placed. Drag a ship to move it, or lock in your fleet. Once locked, ships can't be moved."
       : `Click a square to place your ${me.fleet[selected].name}. It runs ${horizontal ? "right" : "down"} from there.`;
   }
 }
 
+// ---------- Dragging ships (mouse or finger) ----------
+
+let drag = null; // { index, offset, startR, startC, moved } while a ship is being dragged
+let suppressClick = false;
+
+// Which board square is under the pointer, or null.
+function cellUnderPointer(e) {
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (!el || !placeBoardEl.contains(el) || el.dataset.row === undefined) return null;
+  return [Number(el.dataset.row), Number(el.dataset.col)];
+}
+
+// Where the ship's first square goes, keeping the square you grabbed under the pointer.
+function dragAnchor(r, c) {
+  return horizontal ? [r, c - drag.offset] : [r - drag.offset, c];
+}
+
+function startDrag(e, r, c) {
+  if (phase !== "placing" || e.button > 0) return;
+  const me = players[current];
+  const index = me.grid[r][c];
+  if (index === null) return;
+  const ship = me.fleet[index];
+  drag = {
+    index,
+    offset: ship.cells.findIndex(([sr, sc]) => sr === r && sc === c),
+    startR: r,
+    startC: c,
+    moved: false,
+  };
+}
+
+function moveDrag(e) {
+  if (!drag) return;
+  const pos = cellUnderPointer(e);
+  if (!pos) {
+    clearPreview();
+    return;
+  }
+  if (!drag.moved && (pos[0] !== drag.startR || pos[1] !== drag.startC)) {
+    // The pointer left the grabbed square, so this is a drag, not a click.
+    drag.moved = true;
+    selected = drag.index;
+    horizontal = players[current].fleet[drag.index].horizontal;
+    placeBoardEl.classList.add("dragging");
+  }
+  if (drag.moved) showPreviewAt(...dragAnchor(...pos));
+}
+
+function endDrag(e) {
+  if (!drag) return;
+  const finished = drag;
+  placeBoardEl.classList.remove("dragging");
+  if (!finished.moved) {
+    drag = null;
+    return; // a plain click: the click handler takes it from here
+  }
+
+  // Ignore the click the browser sends right after a drag.
+  suppressClick = true;
+  setTimeout(() => (suppressClick = false), 0);
+
+  const me = players[current];
+  const ship = me.fleet[finished.index];
+  const pos = cellUnderPointer(e);
+  const anchor = pos ? dragAnchor(...pos) : null;
+  drag = null;
+
+  if (anchor && placeShip(me, finished.index, anchor[0], anchor[1], horizontal)) {
+    selected = nextUnplaced(me);
+    placeMessageEl.textContent = `Moved your ${ship.name}.`;
+  } else {
+    selected = finished.index;
+    placeMessageEl.textContent = `Your ${ship.name} doesn't fit there, so it stayed put. Try another spot.`;
+  }
+  renderPlacement();
+}
+
+function cancelDrag() {
+  drag = null;
+  placeBoardEl.classList.remove("dragging");
+  clearPreview();
+}
+
+document.addEventListener("pointermove", moveDrag);
+document.addEventListener("pointerup", endDrag);
+document.addEventListener("pointercancel", cancelDrag);
+
+// ---------- Previews and clicks ----------
+
 // Highlight where the selected ship would land: green if it fits, red if not.
 function showPreview(r, c) {
+  if (drag) return; // while dragging, moveDrag draws the preview
+  showPreviewAt(r, c);
+}
+
+function showPreviewAt(r, c) {
   clearPreview();
   if (selected === null) return;
   const me = players[current];
@@ -316,6 +412,7 @@ function clearPreview() {
 }
 
 function clickPlacementCell(r, c) {
+  if (suppressClick) return;
   const me = players[current];
   const shipThere = me.grid[r][c];
 
@@ -323,13 +420,19 @@ function clickPlacementCell(r, c) {
   if (shipThere !== null && shipThere !== selected) {
     selected = shipThere;
     horizontal = me.fleet[shipThere].horizontal;
-    placeMessageEl.textContent = `Moving your ${me.fleet[shipThere].name}. Click a new spot or Rotate.`;
+    placeMessageEl.textContent = `Moving your ${me.fleet[shipThere].name}. Drag it, click a new spot, or Rotate.`;
     renderPlacement();
     return;
   }
   if (selected === null) return;
 
   const ship = me.fleet[selected];
+  // Clicking the ship you already picked up keeps it picked up.
+  if (shipThere === selected) {
+    placeMessageEl.textContent = `Moving your ${ship.name}. Drag it, click a new spot, or Rotate.`;
+    renderPlacement();
+    return;
+  }
   if (placeShip(me, selected, r, c, horizontal)) {
     selected = nextUnplaced(me);
     placeMessageEl.textContent = "";
@@ -360,12 +463,14 @@ function shuffle() {
   const me = players[current];
   shuffleFleet(me);
   selected = null;
-  placeMessageEl.textContent = "Ships shuffled. Click a ship to move it, shuffle again, or press Done.";
+  placeMessageEl.textContent = "Ships shuffled. Drag a ship to move it, shuffle again, or lock in your fleet.";
   renderPlacement();
 }
 
+// Locking in is final: there is no way back to this screen once the battle starts.
 function donePlacing() {
   if (!allPlaced(players[current])) return;
+  if (!window.confirm("Lock in your fleet? You won't be able to move your ships after this.")) return;
   placeEl.hidden = true;
   if (current === 0) {
     current = 1;

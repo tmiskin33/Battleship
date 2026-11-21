@@ -7,7 +7,7 @@ A two-player Battleship game for one device. Each player picks a Big 12 team, an
 Download or clone this repository and open `index.html` in any modern browser.
 
 1. Player 1 picks a team, then Player 2 picks a different one.
-2. Each player takes a turn placing their five ships: click a ship, then click a square. Use **Rotate** (or the R key) to turn it, click a placed ship to move it, or press **Shuffle** for a random layout.
+2. Each player takes a turn placing their five ships: drag a ship, or click it and then click a square. Use **Rotate** (or the R key) to turn it, click a placed ship to move it, or press **Shuffle** for a random layout. Press **Lock in fleet** when you're happy: ships can't be moved after that.
 3. Hand the device to Player 1 and click **I'm ready**.
 4. Fire one shot at **Enemy waters**, then click **Pass to …** and hand the device over.
 5. The cover screen hides both boards between turns, so no peeking.
