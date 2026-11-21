@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battleship: Big 12 Edition</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Battleship <span class="subtitle">Big 12 Edition</span></h1>
+
+    <!-- Start screen: each player picks a team -->
+    <section id="setup">
+      <h2 id="setup-title">Player 1, pick your team</h2>
+      <div id="team-grid" class="team-grid"></div>
+    </section>
+
+    <!-- Cover screen: hides both boards while the device changes hands -->
+    <section id="cover" class="cover team-colors" hidden>
+      <p id="cover-player" class="cover-player"></p>
+      <h2 id="cover-title"></h2>
+      <p>Hand the device to this player. No peeking!</p>
+      <button id="ready-btn" class="big-btn">I'm ready</button>
+    </section>
+
+    <!-- Game screen -->
+    <section id="game" class="team-colors" hidden>
+      <div class="team-banner">
+        <h2 id="turn-title"></h2>
+      </div>
+      <p id="message" aria-live="polite"></p>
+
+      <div class="boards">
+        <div id="target-wrap" class="team-colors">
+          <h3 id="target-label">Enemy waters</h3>
+          <div id="target-board" class="board" aria-label="Enemy waters"></div>
+        </div>
+        <div>
+          <h3>Your fleet</h3>
+          <div id="own-board" class="board own" aria-label="Your fleet"></div>
+        </div>
+      </div>
+
+      <p id="status"></p>
+      <button id="pass-btn" class="big-btn" hidden>Pass the device</button>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
