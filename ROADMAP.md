@@ -26,9 +26,9 @@ Every milestone ends with something you can open in a browser (`index.html`) and
 - [x] Rule for both players picking the same team (blocked: a team taken by Player 1 is grayed out)
 - [x] **Test:** play a game with two different teams and check colors and names throughout, then try picking the same team
 
-## Milestone 4: Manual ship placement (first add-on)
-- [ ] Each player places their own ships before the game starts, with the cover screen in between
-- [ ] Rotate button switches between horizontal and vertical
-- [ ] Ships can't overlap or go off the board
-- [ ] Shuffle button places ships randomly instead
-- [ ] **Test:** place ships by hand, try an invalid spot, use shuffle, then play a full game
+## Milestone 4: Manual ship placement (first add-on) ✅
+- [x] Each player places their own ships before the game starts, with the cover screen in between
+- [x] Rotate button switches between horizontal and vertical
+- [x] Ships can't overlap or go off the board
+- [x] Shuffle button places ships randomly instead
+- [x] **Test:** place ships by hand, try an invalid spot, use shuffle, then play a full game

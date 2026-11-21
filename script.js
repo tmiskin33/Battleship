@@ -1,5 +1,5 @@
-// Milestone 3: two players pick Big 12 teams, then play on one device
-// with a cover screen between turns.
+// Battleship: Big 12 Edition. Two players pick Big 12 teams, place their
+// ships, then play on one device with a cover screen between turns.
 
 const SIZE = 10;
 const SHIPS = [
@@ -33,6 +33,14 @@ const TEAMS = [
 const setupEl = document.getElementById("setup");
 const setupTitleEl = document.getElementById("setup-title");
 const teamGridEl = document.getElementById("team-grid");
+const placeEl = document.getElementById("place");
+const placeTitleEl = document.getElementById("place-title");
+const placeMessageEl = document.getElementById("place-message");
+const placeBoardEl = document.getElementById("place-board");
+const shipListEl = document.getElementById("ship-list");
+const rotateBtn = document.getElementById("rotate-btn");
+const shuffleBtn = document.getElementById("shuffle-btn");
+const doneBtn = document.getElementById("done-btn");
 const coverEl = document.getElementById("cover");
 const coverPlayerEl = document.getElementById("cover-player");
 const coverTitleEl = document.getElementById("cover-title");
@@ -84,39 +92,71 @@ function emptyGrid() {
   return Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
 }
 
-// Place every ship at a random spot that fits on the board and doesn't overlap.
+// The squares a ship would cover, starting at (row, col) and running right or down.
+function shipCells(row, col, length, horizontal) {
+  const cells = [];
+  for (let i = 0; i < length; i++) {
+    cells.push(horizontal ? [row, col + i] : [row + i, col]);
+  }
+  return cells;
+}
+
+// A ship fits if every square is on the board and is water (or already this ship).
 // grid[row][col] holds the index of the ship there, or null for water.
-function placeFleet(team) {
-  const grid = emptyGrid();
-  const fleet = SHIPS.map((ship, index) => {
-    while (true) {
+function fits(player, index, cells) {
+  return cells.every(
+    ([r, c]) => r >= 0 && r < SIZE && c >= 0 && c < SIZE &&
+      (player.grid[r][c] === null || player.grid[r][c] === index)
+  );
+}
+
+function removeShip(player, index) {
+  const ship = player.fleet[index];
+  if (!ship.cells) return;
+  ship.cells.forEach(([r, c]) => (player.grid[r][c] = null));
+  ship.cells = null;
+}
+
+// Try to put a ship at (row, col). Returns false and changes nothing if it doesn't fit.
+function placeShip(player, index, row, col, horizontal) {
+  const ship = player.fleet[index];
+  const cells = shipCells(row, col, ship.length, horizontal);
+  if (!fits(player, index, cells)) return false;
+  removeShip(player, index);
+  cells.forEach(([r, c]) => (player.grid[r][c] = index));
+  ship.cells = cells;
+  ship.horizontal = horizontal;
+  return true;
+}
+
+// Place every ship at a random spot that fits and doesn't overlap.
+function shuffleFleet(player) {
+  player.fleet.forEach((_, index) => removeShip(player, index));
+  player.fleet.forEach((ship, index) => {
+    let placed = false;
+    while (!placed) {
       const horizontal = Math.random() < 0.5;
-      const row = Math.floor(Math.random() * (horizontal ? SIZE : SIZE - ship.length + 1));
-      const col = Math.floor(Math.random() * (horizontal ? SIZE - ship.length + 1 : SIZE));
-
-      const cells = [];
-      for (let i = 0; i < ship.length; i++) {
-        cells.push(horizontal ? [row, col + i] : [row + i, col]);
-      }
-
-      if (cells.every(([r, c]) => grid[r][c] === null)) {
-        cells.forEach(([r, c]) => (grid[r][c] = index));
-        // Team-flavored ship name, e.g. "Jayhawk Carrier"
-        return { name: `${team.mascot} ${ship.name}`, length: ship.length, hits: 0 };
-      }
+      const row = Math.floor(Math.random() * SIZE);
+      const col = Math.floor(Math.random() * SIZE);
+      placed = placeShip(player, index, row, col, horizontal);
     }
   });
-  return { grid, fleet };
 }
 
 function makePlayer(number, team) {
-  const { grid, fleet } = placeFleet(team);
   return {
     number,
     team,
     name: team.school,
-    grid,
-    fleet,
+    grid: emptyGrid(),
+    // Team-flavored ship names, e.g. "Jayhawk Carrier". cells stays null until placed.
+    fleet: SHIPS.map((ship) => ({
+      name: `${team.mascot} ${ship.name}`,
+      length: ship.length,
+      hits: 0,
+      cells: null,
+      horizontal: true,
+    })),
     received: emptyGrid(), // shots fired at this player: null, "miss" or "hit"
     lastIncoming: null, // report of the opponent's last shot, shown at the start of this player's turn
   };
@@ -126,8 +166,9 @@ function makePlayer(number, team) {
 
 const players = [];
 let current = 0;
-// "setup" = picking teams, "cover" = device being passed, "aim" = waiting for a shot,
-// "fired" = shot taken, waiting to pass, "over" = someone won
+// "setup" = picking teams, "place-cover" = device being passed before placing ships,
+// "placing" = a player is placing ships, "cover" = device being passed between turns,
+// "aim" = waiting for a shot, "fired" = shot taken, waiting to pass, "over" = someone won
 let phase = "setup";
 
 function opponentOf(index) {
@@ -175,7 +216,163 @@ function pickTeam(team) {
   } else {
     setupEl.hidden = true;
     current = 0;
-    showCover();
+    showCover("place");
+  }
+}
+
+// ---------- Ship placement ----------
+
+let selected = 0; // index of the ship being placed or moved, or null
+let horizontal = true;
+
+function allPlaced(player) {
+  return player.fleet.every((s) => s.cells);
+}
+
+function nextUnplaced(player) {
+  const index = player.fleet.findIndex((s) => !s.cells);
+  return index === -1 ? null : index;
+}
+
+function startPlacing() {
+  phase = "placing";
+  coverEl.hidden = true;
+  placeEl.hidden = false;
+  const me = players[current];
+  applyTeamColors(placeEl, me.team);
+  placeTitleEl.textContent = `${me.team.school}, place your fleet`;
+  selected = 0;
+  horizontal = true;
+  placeMessageEl.textContent = "";
+  renderPlacement();
+}
+
+function renderPlacement() {
+  const me = players[current];
+
+  placeBoardEl.innerHTML = "";
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const cell = document.createElement("button");
+      cell.className = "cell";
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+      cell.setAttribute("aria-label", `Row ${r + 1}, column ${c + 1}`);
+      const shipIndex = me.grid[r][c];
+      if (shipIndex !== null) {
+        cell.classList.add("ship");
+        if (shipIndex === selected) cell.classList.add("selected");
+      }
+      cell.addEventListener("click", () => clickPlacementCell(r, c));
+      cell.addEventListener("mouseenter", () => showPreview(r, c));
+      placeBoardEl.appendChild(cell);
+    }
+  }
+  placeBoardEl.onmouseleave = clearPreview;
+
+  // Ship list: click a ship to select it, then click the board to put it there.
+  shipListEl.innerHTML = "";
+  me.fleet.forEach((ship, index) => {
+    const btn = document.createElement("button");
+    btn.className = "ship-btn";
+    if (index === selected) btn.classList.add("selected");
+    if (ship.cells) btn.classList.add("placed");
+    btn.innerHTML = `<span>${ship.name}</span><span class="ship-squares">${"■".repeat(ship.length)}</span>`;
+    btn.addEventListener("click", () => {
+      selected = index;
+      placeMessageEl.textContent = "";
+      renderPlacement();
+    });
+    shipListEl.appendChild(btn);
+  });
+
+  rotateBtn.textContent = `↻ Rotate (now ${horizontal ? "across" : "down"})`;
+  doneBtn.disabled = !allPlaced(me);
+  doneBtn.textContent = allPlaced(me) ? "Done placing" : `Place ${me.fleet.filter((s) => !s.cells).length} more`;
+
+  if (!placeMessageEl.textContent) {
+    placeMessageEl.textContent = selected === null
+      ? "All ships placed. Click a ship to move it, or press Done."
+      : `Click a square to place your ${me.fleet[selected].name}. It runs ${horizontal ? "right" : "down"} from there.`;
+  }
+}
+
+// Highlight where the selected ship would land: green if it fits, red if not.
+function showPreview(r, c) {
+  clearPreview();
+  if (selected === null) return;
+  const me = players[current];
+  const cells = shipCells(r, c, me.fleet[selected].length, horizontal);
+  const ok = fits(me, selected, cells);
+  cells.forEach(([pr, pc]) => {
+    const el = placeBoardEl.querySelector(`[data-row="${pr}"][data-col="${pc}"]`);
+    if (el) el.classList.add(ok ? "preview-ok" : "preview-bad");
+  });
+}
+
+function clearPreview() {
+  placeBoardEl.querySelectorAll(".preview-ok, .preview-bad")
+    .forEach((el) => el.classList.remove("preview-ok", "preview-bad"));
+}
+
+function clickPlacementCell(r, c) {
+  const me = players[current];
+  const shipThere = me.grid[r][c];
+
+  // Clicking a different ship picks it up so it can be moved.
+  if (shipThere !== null && shipThere !== selected) {
+    selected = shipThere;
+    horizontal = me.fleet[shipThere].horizontal;
+    placeMessageEl.textContent = `Moving your ${me.fleet[shipThere].name}. Click a new spot or Rotate.`;
+    renderPlacement();
+    return;
+  }
+  if (selected === null) return;
+
+  const ship = me.fleet[selected];
+  if (placeShip(me, selected, r, c, horizontal)) {
+    selected = nextUnplaced(me);
+    placeMessageEl.textContent = "";
+  } else {
+    placeMessageEl.textContent = `Your ${ship.name} doesn't fit there. It can't go off the board or overlap another ship.`;
+  }
+  renderPlacement();
+  showPreview(r, c);
+}
+
+function rotate() {
+  if (phase !== "placing") return;
+  horizontal = !horizontal;
+  placeMessageEl.textContent = "";
+  const me = players[current];
+  // A placed ship rotates in place if there's room.
+  if (selected !== null && me.fleet[selected].cells) {
+    const ship = me.fleet[selected];
+    const [r, c] = ship.cells[0];
+    if (!placeShip(me, selected, r, c, horizontal)) {
+      placeMessageEl.textContent = `No room to rotate your ${ship.name} here. Click a new spot to place it ${horizontal ? "horizontally" : "vertically"}.`;
+    }
+  }
+  renderPlacement();
+}
+
+function shuffle() {
+  const me = players[current];
+  shuffleFleet(me);
+  selected = null;
+  placeMessageEl.textContent = "Ships shuffled. Click a ship to move it, shuffle again, or press Done.";
+  renderPlacement();
+}
+
+function donePlacing() {
+  if (!allPlaced(players[current])) return;
+  placeEl.hidden = true;
+  if (current === 0) {
+    current = 1;
+    showCover("place");
+  } else {
+    current = 0;
+    showCover("battle");
   }
 }
 
@@ -235,14 +432,18 @@ function render() {
 
 // ---------- Turn flow ----------
 
-function showCover() {
-  phase = "cover";
+// mode "place": hand over to place ships. mode "battle": hand over to take a shot.
+function showCover(mode) {
+  phase = mode === "place" ? "place-cover" : "cover";
   const next = players[current];
   gameEl.hidden = true;
+  placeEl.hidden = true;
   coverEl.hidden = false;
   applyTeamColors(coverEl, next.team);
   coverPlayerEl.textContent = `Player ${next.number}`;
-  coverTitleEl.textContent = `${next.team.school} ${next.team.nickname}, you're up`;
+  coverTitleEl.textContent = mode === "place"
+    ? `${next.team.school} ${next.team.nickname}, place your fleet`
+    : `${next.team.school} ${next.team.nickname}, you're up`;
 }
 
 function startTurn() {
@@ -297,10 +498,20 @@ function fire(r, c) {
   passBtn.hidden = false;
 }
 
-readyBtn.addEventListener("click", startTurn);
+readyBtn.addEventListener("click", () => {
+  if (phase === "place-cover") startPlacing();
+  else if (phase === "cover") startTurn();
+});
 passBtn.addEventListener("click", () => {
   current = 1 - current;
-  showCover();
+  showCover("battle");
+});
+rotateBtn.addEventListener("click", rotate);
+shuffleBtn.addEventListener("click", shuffle);
+doneBtn.addEventListener("click", donePlacing);
+// Keyboard shortcut: R rotates while placing ships.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "r" || e.key === "R") rotate();
 });
 
 drawTeamPicker();

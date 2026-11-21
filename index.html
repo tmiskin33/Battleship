@@ -17,6 +17,25 @@
       <div id="team-grid" class="team-grid"></div>
     </section>
 
+    <!-- Ship placement: each player places their own fleet -->
+    <section id="place" class="team-colors" hidden>
+      <div class="team-banner">
+        <h2 id="place-title"></h2>
+      </div>
+      <p id="place-message" aria-live="polite"></p>
+      <div class="place-layout">
+        <div id="place-board" class="board own placing" aria-label="Place your fleet"></div>
+        <div class="place-side">
+          <div id="ship-list" class="ship-list"></div>
+          <div class="place-controls">
+            <button id="rotate-btn" class="small-btn">Rotate</button>
+            <button id="shuffle-btn" class="small-btn">Shuffle</button>
+          </div>
+          <button id="done-btn" class="big-btn">Done placing</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Cover screen: hides both boards while the device changes hands -->
     <section id="cover" class="cover team-colors" hidden>
       <p id="cover-player" class="cover-player"></p>
